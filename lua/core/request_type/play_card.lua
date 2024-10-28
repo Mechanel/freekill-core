@@ -85,14 +85,22 @@ end
 
 function ReqPlayCard:feasible()
   local player = self.player
-  if self.skill_name then
-    return ReqActiveSkill.feasible(self)
-  end
-  local card = self.selected_card
   local ret = false
+  local card = self.selected_card
+  if self.skill_name then
+    local skill = Fk.skills[self.skill_name]
+    if skill:isInstanceOf(ActiveSkill) then
+      return ReqActiveSkill.feasible(self)
+    else -- viewasskill
+      card = skill:viewAs(self.pendings)
+    end
+  end
   if card then
     local skill = card.skill ---@type ActiveSkill
     ret = skill:feasible(self.selected_targets, { card.id }, player, card)
+    if ret then
+      ret = skill:canUse(player, card, self.extra_data) and not player:prohibitUse(card)
+    end
   end
   return ret
 end
@@ -131,7 +139,11 @@ end
 function ReqPlayCard:doEndButton()
   self.scene:update("SpecialSkills", "1", { skills = {} })
   self.scene:notifyUI()
-  ClientInstance:notifyUI("ReplyToServer", "")
+  if ClientInstance then
+    ClientInstance:notifyUI("ReplyToServer", "")
+  else
+    return ""
+  end
 end
 
 function ReqPlayCard:selectCard(cid, data)

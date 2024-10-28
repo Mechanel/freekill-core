@@ -529,13 +529,22 @@ Fk:loadTranslationTable{
   ["ex__choose_skill"] = "选择",
   ["distribution_select_skill"] = "分配",
   ["choose_players_to_move_card_in_board"] = "选择角色",
+
+  ["AskForUseActiveSkill"] = "使用技能",
+  ["AskForSkillInvoke"] = "发动技能",
+  ["AskForUseCard"] = "使用",
+  ["AskForResponseCard"] = "打出",
+  ["AskForDiscard"] = "弃牌",
+  ["AskForCardChosen"] = "选牌",
+  ["AskForCardsChosen"] = "选牌",
+
   ["reveal_skill&"] = "亮将",
   ["#reveal_skill&"] = "选择一个武将亮将（点击左侧选择框展开）",
   [":reveal_skill&"] = "出牌阶段，你可明置一张有锁定技的武将。",
   ["revealMain"] = "明置主将 %arg",
   ["revealDeputy"] = "明置副将 %arg",
 
-  ["game_rule"] = "弃牌阶段",
+  ["game_rule"] = "游戏规则",
   ["replace_equip"] = "替换装备",
   ["#EquipmentChoice"] = "%arg",
   ["#GameRuleReplaceEquipment"] = "请选择要置入的区域",

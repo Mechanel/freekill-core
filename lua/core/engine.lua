@@ -23,6 +23,7 @@
 ---@field public translations table<string, table<string, string>> @ 翻译表
 ---@field public game_modes table<string, GameMode> @ 所有游戏模式
 ---@field public game_mode_disabled table<string, string[]> @ 游戏模式禁用的包
+---@field public main_mode_list table<string, string[]> @ 主模式检索表
 ---@field public currentResponsePattern string @ 要求用牌的种类（如要求用特定花色的桃···）
 ---@field public currentResponseReason string @ 要求用牌的原因（如濒死，被特定牌指定，使用特定技能···）
 ---@field public filtered_cards table<integer, Card> @ 被锁视技影响的卡牌
@@ -70,6 +71,7 @@ function Engine:initialize()
   self.translations = {}  -- srcText --> translated
   self.game_modes = {}
   self.game_mode_disabled = {}
+  self.main_mode_list = {}
   self.kingdoms = {}
   self.kingdom_map = {}
   self.damage_nature = { [fk.NormalDamage] = { "normal_damage", false } }
@@ -265,9 +267,28 @@ function Engine:loadDisabled()
   for mode_name, game_mode in pairs(self.game_modes) do
     local disabled_packages = {}
     for name, pkg in pairs(self.packages) do
-      if table.contains(game_mode.blacklist or Util.DummyTable, name) or
-      (game_mode.whitelist and not table.contains(game_mode.whitelist, name)) or
-      table.contains(pkg.game_modes_blacklist or Util.DummyTable, mode_name) or
+      --- GameMode对Package筛选
+      if type(game_mode.whitelist) == "function" then
+        if not game_mode:whitelist(pkg) then
+          table.insert(disabled_packages, name)
+        end
+      elseif type(game_mode.whitelist) == "table" then
+        if not table.contains(game_mode.whitelist, name) then
+          table.insert(disabled_packages, name)
+        end
+      end
+      if type(game_mode.blacklist) == "function" then
+        if game_mode:blacklist(pkg) then
+          table.insert(disabled_packages, name)
+        end
+      elseif type(game_mode.blacklist) == "table" then
+        if table.contains(game_mode.blacklist, name) then
+          table.insert(disabled_packages, name)
+        end
+      end
+
+      --- Package对GameMode筛选
+      if table.contains(pkg.game_modes_blacklist or Util.DummyTable, mode_name) or
       (pkg.game_modes_whitelist and not table.contains(pkg.game_modes_whitelist, mode_name)) then
         table.insert(disabled_packages, name)
       end

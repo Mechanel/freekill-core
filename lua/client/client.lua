@@ -6,7 +6,9 @@
 ---@field public alive_players ClientPlayer[] @ 所有存活玩家的数组
 ---@field public observers ClientPlayer[] @ 观察者的数组
 ---@field public current ClientPlayer @ 当前回合玩家
----@field public observing boolean
+---@field public observing boolean 客户端是否在旁观
+---@field public replaying boolean 客户端是否在重放
+---@field public replaying_show boolean 重放时是否要看到全部牌
 ---@field public record any
 ---@field public last_update_ui integer @ 上次刷新状态技UI的时间
 Client = AbstractRoom:subclass('Client')
@@ -68,25 +70,6 @@ function Client:initialize()
       cb(data)
     else
       self:notifyUI(command, data)
-    end
-
-    if self.recording and command == "GameLog" then
-      --and os.getms() - self.last_update_ui > 60000 then
-      -- self.last_update_ui = os.getms()
-      -- TODO: create a function
-      -- 刷所有人手牌上限
-      for _, p in ipairs(self.alive_players) do
-        self:notifyUI("MaxCard", {
-          pcardMax = p:getMaxCards(),
-          id = p.id,
-        })
-      end
-      -- 刷自己的手牌
-      for _, cid in ipairs(Self:getCardIds("h")) do
-        self:notifyUI("UpdateCard", cid)
-      end
-      -- 刷技能状态
-      self:notifyUI("UpdateSkill", nil)
     end
   end
 
@@ -248,8 +231,12 @@ fk.client_callback["EnterRoom"] = function(_data)
   Self = ClientPlayer:new(fk.Self)
   -- FIXME: 需要改Qml
   local ob = ClientInstance.observing
+  local replaying = ClientInstance.replaying
+  local showcards = ClientInstance.replaying_show
   ClientInstance = Client:new() -- clear old client data
   ClientInstance.observing = ob
+  ClientInstance.replaying = replaying
+  ClientInstance.replaying_show = showcards
   ClientInstance.players = {Self}
   ClientInstance.alive_players = {Self}
   ClientInstance.discard_pile = {}
@@ -383,15 +370,20 @@ fk.client_callback["AskForCardChosen"] = function(data)
     if not string.find(flag, "j") then
       judge = {}
     end
+    local visible_data = {}
+    for _, cid in ipairs(hand) do
+      if not Self:cardVisible(cid) then
+        visible_data[tostring(cid)] = false
+      end
+    end
+    if next(visible_data) == nil then visible_data = nil end
     ui_data = {
       _id = id,
       _reason = reason,
       card_data = {},
       _prompt = prompt,
+      visible_data = visible_data,
     }
-    if #hand > 0 and not Self:cardVisible(hand[1]) then
-      hand = table.map(hand, function() return -1 end)
-    end
     if #hand ~= 0 then table.insert(ui_data.card_data, { "$Hand", hand }) end
     if #equip ~= 0 then table.insert(ui_data.card_data, { "$Equip", equip }) end
     if #judge ~= 0 then table.insert(ui_data.card_data, { "$Judge", judge }) end
@@ -423,6 +415,13 @@ fk.client_callback["AskForCardsChosen"] = function(data)
     if not string.find(flag, "j") then
       judge = {}
     end
+    local visible_data = {}
+    for _, cid in ipairs(hand) do
+      if not Self:cardVisible(cid) then
+        visible_data[tostring(cid)] = false
+      end
+    end
+    if next(visible_data) == nil then visible_data = nil end
     ui_data = {
       _id = id,
       _min = min,
@@ -430,10 +429,8 @@ fk.client_callback["AskForCardsChosen"] = function(data)
       _reason = reason,
       card_data = {},
       _prompt = prompt,
+      visible_data = visible_data,
     }
-    if #hand > 0 and not Self:cardVisible(hand[1]) then
-      hand = table.map(hand, function() return -1 end)
-    end
     if #hand ~= 0 then table.insert(ui_data.card_data, { "$Hand", hand }) end
     if #equip ~= 0 then table.insert(ui_data.card_data, { "$Equip", equip }) end
     if #judge ~= 0 then table.insert(ui_data.card_data, { "$Judge", judge }) end
@@ -860,13 +857,9 @@ fk.client_callback["AskForUseActiveSkill"] = function(data)
   local skill = Fk.skills[data[1]]
   local extra_data = data[4]
   skill._extra_data = extra_data
-
   Fk.currentResponseReason = extra_data.skillName
-  local h = Fk.request_handlers["AskForUseActiveSkill"]:new(Self)
-  h.skill_name = data[1]
-  h.prompt     = data[2]
-  h.cancelable = data[3]
-  h.extra_data = data[4]
+
+  local h = Fk.request_handlers["AskForUseActiveSkill"]:new(Self, data)
   h.change = {}
   h:setup()
   h.scene:notifyUI()
@@ -876,12 +869,7 @@ end
 fk.client_callback["AskForUseCard"] = function(data)
   -- jsonData: card, pattern, prompt, cancelable, {}
   Fk.currentResponsePattern = data[2]
-  local h = Fk.request_handlers["AskForUseCard"]:new(Self)
-  -- h.skill_name = data[1] (skill_name是给选中的视为技用的)
-  h.pattern    = data[2]
-  h.prompt     = data[3]
-  h.cancelable = data[4]
-  h.extra_data = data[5]
+  local h = Fk.request_handlers["AskForUseCard"]:new(Self, data)
   h.change = {}
   h:setup()
   h.scene:notifyUI()
@@ -891,12 +879,7 @@ end
 fk.client_callback["AskForResponseCard"] = function(data)
   -- jsonData: card, pattern, prompt, cancelable, {}
   Fk.currentResponsePattern = data[2]
-  local h = Fk.request_handlers["AskForResponseCard"]:new(Self)
-  -- h.skill_name = data[1] (skill_name是给选中的视为技用的)
-  h.pattern    = data[2]
-  h.prompt     = data[3]
-  h.cancelable = data[4]
-  h.extra_data = data[5]
+  local h = Fk.request_handlers["AskForResponseCard"]:new(Self, data)
   h.change = {}
   h:setup()
   h.scene:notifyUI()

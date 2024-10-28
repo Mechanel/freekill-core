@@ -150,64 +150,6 @@ function Room:makeGeneralPile()
   return true
 end
 
--- 因为现在已经不是轮询了，加上有点难分析
--- 选择开摆
-function Room:isReady()
-  -- 因为delay函数而延时：判断延时是否已经结束。
-  -- 注意整个delay函数的实现都搬到这来了，delay本身只负责挂起协程了。
-  --[[
-  if self.in_delay then
-    local rest = self.delay_duration - (os.getms() - self.delay_start) / 1000
-    if rest <= 50 then
-      self.in_delay = false
-      return true
-    end
-    return false, rest
-  end
-  --]]
-  return true
-end
-
---[[
--- 供调度器使用的函数，用来指示房间是否就绪。
--- 如果没有就绪的话，可能会返回第二个值来告诉调度器自己还有多久就绪。
-function Room:isReady()
-  -- 没有活人了？那就告诉调度器我就绪了，恢复时候就会自己杀掉
-  if self:checkNoHuman(true) then
-    return true
-  end
-
-  -- 剩下的就是因为等待应答而未就绪了
-  -- 检查所有正在等回答的玩家，如果已经过了烧条时间
-  -- 那么就不认为他还需要时间就绪了
-  -- 然后在调度器第二轮刷新的时候就应该能返回自己已就绪
-  local ret = true
-  local rest
-  for _, p in ipairs(self.players) do
-    -- 这里判断的话需要用_splayer了，不然一控多的情况下会导致重复判断
-    if p._splayer:thinking() then
-      -- 烧条烧光了的话就把thinking设为false
-      rest = p.request_timeout * 1000 - (os.getms() -
-        p.request_start) / 1000
-
-      if rest <= 0 or p.serverplayer:getState() ~= fk.Player_Online then
-        p._splayer:setThinking(false)
-      else
-        ret = false
-      end
-    end
-
-    if self.race_request_list and table.contains(self.race_request_list, p) then
-      local result = p.serverplayer:waitForReply(0)
-      if result ~= "__notready" and result ~= "__cancel" and result ~= "" then
-        return true
-      end
-    end
-  end
-  return ret, (rest and rest > 1) and rest or nil
-end
---]]
-
 function Room:checkNoHuman(chkOnly)
   if #self.players == 0 then return end
 
@@ -655,9 +597,9 @@ end
 function Room:doRequest(player, command, jsonData, wait)
   -- fk.qCritical("Room:doRequest is deprecated!")
   if wait == true then error("wait can't be true") end
-  local request = Request:new(command, {player})
-  request.send_json = false -- 因为参数已经json.encode过了，该死的兼容性
-  request.receive_json = false
+  local request = Request:new(player, command)
+  request.send_encode = false -- 因为参数已经json.encode过了，该死的兼容性
+  request.receive_decode = false
   request.accept_cancel = true
   request:setData(player, jsonData)
   request:ask()
@@ -671,9 +613,9 @@ end
 function Room:doBroadcastRequest(command, players, jsonData)
   -- fk.qCritical("Room:doBroadcastRequest is deprecated!")
   players = players or self.players
-  local request = Request:new(command, players)
-  request.send_json = false -- 因为参数已经json.encode过了
-  request.receive_json = false
+  local request = Request:new(players, command)
+  request.send_encode = false -- 因为参数已经json.encode过了
+  request.receive_decode = false
   request.accept_cancel = true
   for _, p in ipairs(players) do
     request:setData(p, jsonData or p.request_data)
@@ -693,14 +635,14 @@ end
 function Room:doRaceRequest(command, players, jsonData)
   -- fk.qCritical("Room:doRaceRequest is deprecated!")
   players = players or self.players
-  local request = Request:new(command, players, 1)
-  request.send_json = false -- 因为参数已经json.encode过了
-  request.receive_json = false
+  local request = Request:new(players, command, 1)
+  request.send_encode = false -- 因为参数已经json.encode过了
+  request.receive_decode = false
   for _, p in ipairs(players) do
     request:setData(p, jsonData or p.request_data)
   end
   request:ask()
-  return request:getWinners()[1]
+  return request.winners[1]
 end
 
 --- 延迟一段时间。
@@ -954,18 +896,20 @@ function Room:askForUseActiveSkill(player, skill_name, prompt, cancelable, extra
   end
 
   local command = "AskForUseActiveSkill"
-  self:notifyMoveFocus(player, extra_data.skillName or skill_name)  -- for display skill name instead of command name
   local data = {skill_name, prompt, cancelable, extra_data}
 
   Fk.currentResponseReason = extra_data.skillName
-  local result = self:doRequest(player, command, json.encode(data))
+  local req = Request:new(player, command)
+  req:setData(player, data)
+  req.focus_text = extra_data.skillName or skill_name
+  local result = req:getResult(player)
   Fk.currentResponseReason = nil
 
   if result == "" then
     return false
   end
 
-  data = json.decode(result)
+  data = result
   local card = data.card
   local targets = data.targets
   local card_data = json.decode(card)
@@ -1027,7 +971,7 @@ function Room:askForDiscard(player, minNum, maxNum, includeEquip, skillName, can
           return false
         end
       end
-      if skillName == "game_rule" then
+      if skillName == "phase_discard" then
         status_skills = Fk:currentRoom().status_skills[MaxCardsSkill] or Util.DummyTable
         for _, skill in ipairs(status_skills) do
           if skill:excludeFrom(player, card) then
@@ -1442,25 +1386,18 @@ end
 ---@return string|string[] @ 选择的武将
 function Room:askForGeneral(player, generals, n, noConvert)
   local command = "AskForGeneral"
-  self:notifyMoveFocus(player, command)
 
   n = n or 1
   if #generals == n then return n == 1 and generals[1] or generals end
   local defaultChoice = table.random(generals, n)
 
-  if (player.serverplayer:getState() == fk.Player_Online) then
-    local result = self:doRequest(player, command, json.encode{ generals, n, noConvert })
-    local choices
-    if result == "" then
-      choices = defaultChoice
-    else
-      choices = json.decode(result)
-    end
-    if #choices == 1 then return choices[1] end
-    return choices
-  end
-
-  return n == 1 and defaultChoice[1] or defaultChoice
+  local req = Request:new(player, command)
+  local data = { generals, n, noConvert }
+  req:setData(player, data)
+  req:setDefaultReply(player, defaultChoice)
+  local choices = req:getResult(player)
+  if #choices == 1 then return choices[1] end
+  return choices
 end
 
 --- 询问玩家若为神将、双势力需选择一个势力。
@@ -1472,7 +1409,9 @@ function Room:askForChooseKingdom(players)
   end)
 
   if #specialKingdomPlayers > 0 then
-    local choiceMap = {}
+    local req = Request:new(specialKingdomPlayers, "AskForChoice")
+    req.focus_text = "AskForKingdom"
+    req.receive_decode = false
     for _, p in ipairs(specialKingdomPlayers) do
       local allKingdoms = {}
       local curGeneral = Fk.generals[p.general]
@@ -1482,25 +1421,13 @@ function Room:askForChooseKingdom(players)
         allKingdoms = Fk:getKingdomMap(p.kingdom)
       end
       if #allKingdoms > 0 then
-        choiceMap[p.id] = allKingdoms
-
-        local data = json.encode({ allKingdoms, allKingdoms, "AskForKingdom", "#ChooseInitialKingdom" })
-        p.request_data = data
+        req:setData(p, { allKingdoms, allKingdoms, "AskForKingdom", "#ChooseInitialKingdom" })
+        req:setDefaultReply(p, allKingdoms[1])
       end
     end
 
-    self:notifyMoveFocus(players, "AskForKingdom")
-    self:doBroadcastRequest("AskForChoice", specialKingdomPlayers)
-
     for _, p in ipairs(specialKingdomPlayers) do
-      local kingdomChosen
-      if p.reply_ready then
-        kingdomChosen = p.client_reply
-      else
-        kingdomChosen = choiceMap[p.id][1]
-      end
-
-      p.kingdom = kingdomChosen
+      p.kingdom = req:getResult(p)
       self:notifyProperty(p, p, "kingdom")
     end
   end
@@ -1516,9 +1443,10 @@ end
 function Room:askForCardChosen(chooser, target, flag, reason, prompt)
   local command = "AskForCardChosen"
   prompt = prompt or ""
-  self:notifyMoveFocus(chooser, command)
   local data = {target.id, flag, reason, prompt}
-  local result = self:doRequest(chooser, command, json.encode(data))
+  local req = Request:new(chooser, command)
+  req:setData(chooser, data)
+  local result = req:getResult(chooser)
 
   if result == "" then
     local areas = {}
@@ -1536,8 +1464,6 @@ function Room:askForCardChosen(chooser, target, flag, reason, prompt)
     end
     if #handcards == 0 then return end
     result = handcards[math.random(1, #handcards)]
-  else
-    result = tonumber(result)
   end
 
   if result == -1 then
@@ -1565,18 +1491,20 @@ function Room:askForPoxi(player, poxi_type, data, extra_data, cancelable)
   if not poxi then return {} end
 
   local command = "AskForPoxi"
-  self:notifyMoveFocus(player, poxi_type)
-  local result = self:doRequest(player, command, json.encode {
+  local req = Request:new(player, command)
+  req.focus_text = poxi_type
+  req:setData(player, {
     type = poxi_type,
     data = data,
     extra_data = extra_data,
     cancelable = (cancelable == nil) and true or cancelable
   })
+  local result = req:getResult(player)
 
   if result == "" then
     return poxi.default_choice(data, extra_data)
   else
-    return poxi.post_select(json.decode(result), data, extra_data)
+    return poxi.post_select(result, data, extra_data)
   end
 end
 
@@ -1614,17 +1542,21 @@ function Room:askForCardsChosen(chooser, target, min, max, flag, reason, prompt)
     skillName = reason,
     prompt = prompt,
   }
+  local visible_data = {}
   local cards_data = {}
   if type(flag) == "string" then
     local handcards = target:getCardIds(Player.Hand)
     local equips = target:getCardIds(Player.Equip)
     local judges = target:getCardIds(Player.Judge)
     if string.find(flag, "h") and #handcards > 0 then
-      -- TODO: 关于明置的牌
-      if target ~= chooser then
-        handcards = table.map(handcards, function() return -1 end)
-      end
       table.insert(cards_data, {"$Hand", handcards})
+      for _, id in ipairs(handcards) do
+        if not chooser:cardVisible(id) then
+          visible_data[tostring(id)] = false
+        end
+      end
+      if next(visible_data) == nil then visible_data = nil end
+      data.visible_data = visible_data
     end
     if string.find(flag, "e") and #equips > 0 then
       table.insert(cards_data, {"$Equip", equips})
@@ -1661,10 +1593,15 @@ function Room:askForChoice(player, choices, skill_name, prompt, detailed, all_ch
   local command = "AskForChoice"
   prompt = prompt or ""
   all_choices = all_choices or choices
-  self:notifyMoveFocus(player, skill_name)
-  local result = self:doRequest(player, command, json.encode{
+
+  local req = Request:new(player, command)
+  req.focus_text = skill_name
+  req.receive_decode = false -- 这个不用decode
+  req:setData(player, {
     choices, all_choices, skill_name, prompt, detailed
   })
+  local result = req:getResult(player)
+
   if result == "" then
     if table.contains(choices, "Cancel") then
       result = "Cancel"
@@ -1691,15 +1628,19 @@ function Room:askForChoices(player, choices, minNum, maxNum, skill_name, prompt,
   if #choices <= minNum and not all_choices and not cancelable then return choices end
   assert(minNum <= maxNum)
   assert(not all_choices or table.every(choices, function(c) return table.contains(all_choices, c) end))
+
   local command = "AskForChoices"
   skill_name = skill_name or ""
   prompt = prompt or ""
   all_choices = all_choices or choices
   detailed = detailed or false
-  self:notifyMoveFocus(player, skill_name)
-  local result = self:doRequest(player, command, json.encode{
+
+  local req = Request:new(player, command)
+  req.focus_text = skill_name
+  req:setData(player, {
     choices, all_choices, {minNum, maxNum}, cancelable, skill_name, prompt, detailed
   })
+  local result = req:getResult(player)
   if result == "" then
     if cancelable then
       return {}
@@ -1707,7 +1648,7 @@ function Room:askForChoices(player, choices, minNum, maxNum, skill_name, prompt,
       return table.random(choices, math.min(minNum, #choices))
     end
   end
-  return json.decode(result)
+  return result
 end
 
 --- 询问玩家是否发动技能。
@@ -1718,11 +1659,11 @@ end
 ---@return boolean
 function Room:askForSkillInvoke(player, skill_name, data, prompt)
   local command = "AskForSkillInvoke"
-  self:notifyMoveFocus(player, skill_name)
-  local invoked = false
-  local result = self:doRequest(player, command, json.encode{ skill_name, prompt })
-  if result ~= "" then invoked = true end
-  return invoked
+  local req = Request:new(player, command)
+  req.focus_text = skill_name
+  req.receive_decode = false -- 这个返回的都是"1" 不用decode
+  req:setData(player, { skill_name, prompt })
+  return req:getResult(player) ~= ""
 end
 
 -- 获取使用牌的合法额外目标（【借刀杀人】等带副目标的卡牌除外）
@@ -1849,7 +1790,9 @@ function Room:askForArrangeCards(player, skillname, cardMap, prompt, free_arrang
     poxi_type = poxi_type or "",
     cancelable = ((pattern ~= "." or poxi_type ~= "") and (default_choice == nil))
   }
-  local result = self:doRequest(player, command, json.encode(data))
+  local req = Request:new(player, command)
+  req:setData(player, data)
+  local result = req:getResult(player)
   -- local result = player.room:askForCustomDialog(player, skillname,
   -- "RoomElement/ArrangeCardsBox.qml", {
   --   cardMap, prompt, box_size, max_limit, min_limit, free_arrange or false, areaNames,
@@ -1883,7 +1826,7 @@ function Room:askForArrangeCards(player, skillname, cardMap, prompt, free_arrang
     end
     return cardMap
   end
-  return json.decode(result)
+  return result
 end
 
 -- TODO: guanxing type
@@ -1921,7 +1864,6 @@ function Room:askForGuanxing(player, cards, top_limit, bottom_limit, customNotif
     areaNames =  { "Top", "Bottom" }
   end
   local command = "AskForGuanxing"
-  self:notifyMoveFocus(player, customNotify or command)
   local max_top = top_limit[2]
   local card_map = {}
   if max_top > 0 then
@@ -1942,10 +1884,13 @@ function Room:askForGuanxing(player, cards, top_limit, bottom_limit, customNotif
     bottom_area_name = areaNames[2],
   }
 
-  local result = self:doRequest(player, command, json.encode(data))
+  local req = Request:new(player, command)
+  req.focus_text = customNotify
+  req:setData(player, data)
+  local result = req:getResult(player)
   local top, bottom
   if result ~= "" then
-    local d = json.decode(result)
+    local d = result
     if top_limit[2] == 0 then
       top = Util.DummyTable
       bottom = d[1]
@@ -1996,15 +1941,17 @@ function Room:askForExchange(player, piles, piles_name, customNotify)
   elseif x < 0 then
     piles_name = table.slice(piles_name, 1, #piles + 1)
   end
-  self:notifyMoveFocus(player, customNotify or command)
   local data = {
     piles = piles,
     piles_name = piles_name,
   }
-  local result = self:doRequest(player, command, json.encode(data))
+
+  local req = Request:new(player, command)
+  req.focus_text = customNotify
+  req:setData(player, data)
+  local result = req:getResult(player)
   if result ~= "" then
-    local d = json.decode(result)
-    return d
+    return result
   else
     return piles
   end
@@ -2014,7 +1961,7 @@ end
 ---@param data string
 ---@return CardUseStruct
 function Room:handleUseCardReply(player, data)
-  data = json.decode(data)
+  -- data = json.decode(data)
   local card = data.card
   local targets = data.targets
   if type(card) == "string" then
@@ -2116,7 +2063,6 @@ function Room:askForUseCard(player, card_name, pattern, prompt, cancelable, extr
   end
 
   local command = "AskForUseCard"
-  self:notifyMoveFocus(player, card_name)
   cancelable = (cancelable == nil) and true or cancelable
   extra_data = extra_data or Util.DummyTable
   prompt = prompt or ""
@@ -2142,7 +2088,12 @@ function Room:askForUseCard(player, card_name, pattern, prompt, cancelable, extr
 
       Fk.currentResponsePattern = pattern
       self.logic:trigger(fk.HandleAskForPlayCard, nil, askForUseCardData, true)
-      local result = self:doRequest(player, command, json.encode(data))
+
+      local req = Request:new(player, command)
+      req.focus_text = card_name or ""
+      req:setData(player, data)
+      local result = req:getResult(player)
+
       askForUseCardData.afterRequest = true
       self.logic:trigger(fk.HandleAskForPlayCard, nil, askForUseCardData, true)
       Fk.currentResponsePattern = nil
@@ -2178,7 +2129,6 @@ function Room:askForResponse(player, card_name, pattern, prompt, cancelable, ext
   end
 
   local command = "AskForResponseCard"
-  self:notifyMoveFocus(player, card_name)
   cancelable = (cancelable == nil) and true or cancelable
   extra_data = extra_data or Util.DummyTable
   pattern = pattern or card_name
@@ -2206,7 +2156,12 @@ function Room:askForResponse(player, card_name, pattern, prompt, cancelable, ext
       Fk.currentResponsePattern = pattern
       eventData.isResponse = true
       self.logic:trigger(fk.HandleAskForPlayCard, nil, eventData, true)
-      local result = self:doRequest(player, command, json.encode(data))
+
+      local req = Request:new(player, command)
+      req.focus_text = card_name or ""
+      req:setData(player, data)
+      local result = req:getResult(player)
+
       eventData.afterRequest = true
       self.logic:trigger(fk.HandleAskForPlayCard, nil, eventData, true)
       Fk.currentResponsePattern = nil
@@ -2260,7 +2215,6 @@ function Room:askForNullification(players, card_name, pattern, prompt, cancelabl
 
   repeat
     useResult = nil
-    self:notifyMoveFocus(self.alive_players, card_name)
     self:doBroadcastNotify("WaitForNullification", "")
 
     local data = {card_name, pattern, prompt, cancelable, extra_data, disabledSkillNames}
@@ -2274,12 +2228,19 @@ function Room:askForNullification(players, card_name, pattern, prompt, cancelabl
       eventData = effectData,
     }
     self.logic:trigger(fk.HandleAskForPlayCard, nil, eventData, true)
-    local winner = self:doRaceRequest(command, players, json.encode(data))
+
+    local req = Request:new(players, command, 1)
+    req.focus_players = self.alive_players
+    req.focus_text = card_name
+    for _, p in ipairs(players) do req:setData(p, data) end
+    req:ask()
+    local winner = req.winners[1]
+
     eventData.afterRequest = true
     self.logic:trigger(fk.HandleAskForPlayCard, nil, eventData, true)
 
     if winner then
-      local result = winner.client_reply
+      local result = req:getResult(winner)
       useResult = self:handleUseCardReply(winner, result)
 
       if type(useResult) == "string" and useResult ~= "" then
@@ -2313,13 +2274,17 @@ function Room:askForAG(player, id_list, cancelable, reason)
   end
 
   local command = "AskForAG"
-  self:notifyMoveFocus(player, reason or command)
+
   local data = { id_list, cancelable, reason }
-  local ret = self:doRequest(player, command, json.encode(data))
+  local req = Request:new(player, command)
+  req.focus_text = reason
+  req:setData(player, data)
+  local ret = req:getResult(player)
+
   if ret == "" and not cancelable then
     ret = table.random(id_list)
   end
-  return tonumber(ret)
+  return ret
 end
 
 --- 给player发一条消息，在他的窗口中用一系列卡牌填充一个AG。
@@ -2410,22 +2375,22 @@ function Room:askForMiniGame(players, focus, game_type, data_table)
   local command = "MiniGame"
   local game = Fk.mini_games[game_type]
   if #players == 0 or not game then return end
+
+  local req = Request:new(players, command)
+  req.focus_text = focus
+  req.receive_decode = false -- 和customDialog同理
+
   for _, p in ipairs(players) do
     local data = data_table[p.id]
     p.mini_game_data = { type = game_type, data = data }
-    p.request_data = json.encode(p.mini_game_data)
-    p.default_reply = game.default_choice and json.encode(game.default_choice(p, data)) or ""
+    req:setData(p, p.mini_game_data)
+    req:setDefaultReply(p, game.default_choice and json.encode(game.default_choice(p, data)))
   end
 
-  self:notifyMoveFocus(players, focus)
-  self:doBroadcastRequest(command, players)
+  req:ask()
 
   for _, p in ipairs(players) do
     p.mini_game_data = nil
-    if not p.reply_ready then
-      p.client_reply = p.default_reply
-      p.reply_ready = true
-    end
   end
 end
 
@@ -2440,11 +2405,14 @@ end
 ---@return string
 function Room:askForCustomDialog(player, focustxt, qmlPath, extra_data)
   local command = "CustomDialog"
-  self:notifyMoveFocus(player, focustxt)
-  return self:doRequest(player, command, json.encode{
+  local req = Request:new(player, command)
+  req.focus_text = focustxt
+  req.receive_decode = false -- 没法知道要不要decode，所以我写false (json.decode该杀啊)
+  req:setData(player, {
     path = qmlPath,
     data = extra_data,
   })
+  return req:getResult(player)
 end
 
 --- 询问移动场上的一张牌
@@ -2529,14 +2497,13 @@ function Room:askForMoveCardInBoard(player, targetOne, targetTwo, skillName, fla
     playerIds = { targetOne.id, targetTwo.id }
   }
   local command = "AskForMoveCardInBoard"
-  self:notifyMoveFocus(player, command)
-  local result = self:doRequest(player, command, json.encode(data))
+  local req = Request:new(player, command)
+  req:setData(player, data)
+  local result = req:getResult(player)
 
   if result == "" then
     local randomIndex = math.random(1, #cards)
     result = { cardId = cards[randomIndex], pos = cardsPosition[randomIndex] }
-  else
-    result = json.decode(result)
   end
 
   local from, to
@@ -2710,7 +2677,8 @@ function Room:gameOver(winner)
   self.game_finished = true
 
   for _, p in ipairs(self.players) do
-    self:broadcastProperty(p, "role")
+    -- self:broadcastProperty(p, "role")
+    self:setPlayerProperty(p, "role_shown", true)
   end
   self:doBroadcastNotify("GameOver", winner)
   fk.qInfo(string.format("[GameOver] %d, %s, %s, in %ds", self.id, self.settings.gameMode, winner, os.time() - self.start_time))

@@ -25,11 +25,18 @@ local CardItem = (require 'ui_emu.common').CardItem
 ---@field public expanded_piles { [string]: integer[] } 用于展开/收起
 local ReqActiveSkill = RequestHandler:subclass("ReqActiveSkill")
 
-function ReqActiveSkill:initialize(player)
+function ReqActiveSkill:initialize(player, data)
   RequestHandler.initialize(self, player)
   self.scene = RoomScene:new(self)
 
   self.expanded_piles = {}
+
+  if data then
+    self.skill_name = data[1]
+    self.prompt     = data[2]
+    self.cancelable = data[3]
+    self.extra_data = data[4]
+  end
 end
 
 function ReqActiveSkill:setup(ignoreInteraction)
@@ -80,7 +87,7 @@ function ReqActiveSkill:setupInteraction()
     if not interaction then
       return
     end
-    skill.interaction.data = interaction.default_choice or nil -- FIXME
+    skill.interaction.data = interaction.default or interaction.default_choice or nil -- FIXME
     -- 假设只有1个interaction （其实目前就是这样）
     local i = Interaction:new(self.scene, "1", interaction)
     i.skill_name = self.skill_name
@@ -291,11 +298,19 @@ function ReqActiveSkill:doOKButton()
   if self.selected_card then
     reply.special_skill = self.skill_name
   end
-  ClientInstance:notifyUI("ReplyToServer", json.encode(reply))
+  if ClientInstance then
+    ClientInstance:notifyUI("ReplyToServer", json.encode(reply))
+  else
+    return reply
+  end
 end
 
 function ReqActiveSkill:doCancelButton()
-  ClientInstance:notifyUI("ReplyToServer", "__cancel")
+  if ClientInstance then
+    ClientInstance:notifyUI("ReplyToServer", "__cancel")
+  else
+    return "__cancel"
+  end
 end
 
 -- 对点击卡牌的处理。data中包含selected属性，可能是选中或者取消选中，分开考虑。

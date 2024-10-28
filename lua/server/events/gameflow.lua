@@ -80,11 +80,11 @@ function DrawInitial:main()
     return
   end
 
-  room:notifyMoveFocus(room.alive_players, "AskForLuckCard")
-  local request = Request:new("AskForSkillInvoke", room.alive_players)
+  local request = Request:new(room.alive_players, "AskForSkillInvoke")
   for _, p in ipairs(room.alive_players) do
     request:setData(p, { "AskForLuckCard", "#AskForLuckCard:::" .. room.settings.luckTime })
   end
+  request.focus_text = "AskForLuckCard"
   request.luck_data = luck_data
   request.accept_cancel = true
   request:ask()
@@ -275,7 +275,7 @@ function Phase:main()
   local room = self.room
   local logic = room.logic
 
-  local player = self.data[1] ---@type Player
+  local player = self.data[1] ---@type ServerPlayer
   if not logic:trigger(fk.EventPhaseStart, player) then
     if player.phase ~= Player.NotActive then
       logic:trigger(fk.EventPhaseProceeding, player)
@@ -332,8 +332,8 @@ function Phase:main()
         while not player.dead do
           if player._phase_end then break end
           logic:trigger(fk.StartPlayCard, player, nil, true)
-          room:notifyMoveFocus(player, "PlayCard")
-          local result = room:doRequest(player, "PlayCard", player.id)
+
+          local result = Request:new(player, "PlayCard"):getResult(player)
           if result == "" then break end
 
           local useResult = room:handleUseCardReply(player, result)
@@ -354,7 +354,7 @@ function Phase:main()
         ) - player:getMaxCards()
         room:broadcastProperty(player, "MaxCards")
         if discardNum > 0 then
-          room:askForDiscard(player, discardNum, discardNum, false, "game_rule", false)
+          room:askForDiscard(player, discardNum, discardNum, false, "phase_discard", false)
         end
       end,
       [Player.Finish] = function()

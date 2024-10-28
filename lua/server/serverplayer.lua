@@ -30,13 +30,6 @@ function ServerPlayer:initialize(_self)
   self.id = _self:getId()
   self.room = nil
 
-  -- Below are for doBroadcastRequest
-  -- 但是几乎全部被船新request杀了
-  self.request_data = ""
-  --self.client_reply = ""
-  self.default_reply = ""
-  --self.reply_ready = false
-  --self.reply_cancel = false
   self.phases = {}
   self.skipped_phases = {}
   self.phase_state = {}
@@ -47,7 +40,7 @@ function ServerPlayer:initialize(_self)
   self._prelighted_skills = {}
 
   self._timewaste_count = 0
-  self.ai = RandomAI:new(self)
+  self.ai = TrustAI:new(self)
 end
 
 ---@param command string
@@ -83,6 +76,19 @@ function ServerPlayer:__index(k)
   elseif k == "reply_ready" then
     return request.result[self.id] and request.result[self.id] ~= ""
   end
+end
+
+-- FIXME: 理由同上，垃圾request体系赶紧狠狠重构
+function ServerPlayer:__newindex(k, v)
+  if k == "client_reply" then
+    local request = self.room.last_request
+    if not request then return end
+    request.result[self.id] = v
+    return
+  elseif k == "reply_ready" then
+    return
+  end
+  rawset(self, k, v)
 end
 
 --- 发送一句聊天

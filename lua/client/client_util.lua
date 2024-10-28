@@ -799,6 +799,19 @@ function SetObserving(o)
   ClientInstance.observing = o
 end
 
+function SetReplaying(o)
+  ClientInstance.replaying = o
+end
+
+function SetReplayingShowCards(o)
+  ClientInstance.replaying_show = o
+  if o then
+    for _, p in ipairs(ClientInstance.players) do
+      ClientInstance:notifyUI("PropertyUpdate", { p.id, "role_shown", true })
+    end
+  end
+end
+
 function CheckSurrenderAvailable(playedTime)
   local curMode = ClientInstance.room_settings.gameMode
   return Fk.game_modes[curMode]:surrenderFunc(playedTime)
@@ -927,7 +940,10 @@ function RevertSelection()
   h.scene:notifyUI()
 end
 
+local requestUIUpdating = false
 function UpdateRequestUI(elemType, id, action, data)
+  if requestUIUpdating then return end
+  requestUIUpdating = true
   local h = ClientInstance.current_request_handler
   h.change = {}
   local finish = h:update(elemType, id, action, data)
@@ -936,6 +952,7 @@ function UpdateRequestUI(elemType, id, action, data)
   else
     h:_finish()
   end
+  requestUIUpdating = false
 end
 
 function FinishRequestUI()
@@ -980,6 +997,24 @@ function HasVisibleCard(me, other, special_name)
     end
   end
   return false
+end
+
+function RefreshStatusSkills()
+  local self = ClientInstance
+  if not self.recording then return end -- 在回放录像就别刷了
+  -- 刷所有人手牌上限
+  for _, p in ipairs(self.alive_players) do
+    self:notifyUI("MaxCard", {
+      pcardMax = p:getMaxCards(),
+      id = p.id,
+    })
+  end
+  -- 刷自己的手牌
+  for _, cid in ipairs(Self:getCardIds("h")) do
+    self:notifyUI("UpdateCard", cid)
+  end
+  -- 刷技能状态
+  self:notifyUI("UpdateSkill", nil)
 end
 
 dofile "lua/client/i18n/init.lua"

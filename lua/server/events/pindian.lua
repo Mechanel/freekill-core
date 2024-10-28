@@ -79,17 +79,18 @@ function Pindian:main()
       })
     else
       table.insert(targets, to)
-      to.request_data = json.encode(data)
     end
   end
 
-  room:notifyMoveFocus(targets, "AskForPindian")
-  room:doBroadcastRequest("AskForUseActiveSkill", targets)
+  local req = Request:new(targets, "AskForUseActiveSkill")
+  for _, p in ipairs(targets) do req:setData(p, data) end
+  req.focus_text = "AskForPindian"
 
   for _, p in ipairs(targets) do
     local _pindianCard
-    if p.reply_ready then
-      local replyCard = json.decode(p.client_reply).card
+    local result = req:getResult(p)
+    if result ~= "" then
+      local replyCard = result.card
       _pindianCard = Fk:getCardById(json.decode(replyCard).subcards[1])
     else
       _pindianCard = Fk:getCardById(p:getCardIds(Player.Hand)[1])
