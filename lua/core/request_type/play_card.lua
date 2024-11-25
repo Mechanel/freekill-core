@@ -19,7 +19,6 @@ end
 function ReqPlayCard:setup()
   ReqUseCard.setup(self)
 
-  self:setPrompt(self.original_prompt)
   self.scene:update("Button", "End", { enabled = true })
 end
 
@@ -99,7 +98,7 @@ function ReqPlayCard:feasible()
     local skill = card.skill ---@type ActiveSkill
     ret = skill:feasible(self.selected_targets, { card.id }, player, card)
     if ret then
-      ret = skill:canUse(player, card, self.extra_data) and not player:prohibitUse(card)
+      ret = skill:canUse(player, card, self.extra_data)
     end
   end
   return ret
@@ -115,11 +114,11 @@ function ReqPlayCard:selectSpecialUse(data)
   if not data or data == "_normal_use" then
     self.skill_name = nil
     self.pendings = nil
-    self:setSkillPrompt(self.selected_card.skill, self.selected_card:getEffectiveId())
+    -- self:setSkillPrompt(self.selected_card.skill, self.selected_card:getEffectiveId())
   else
     self.skill_name = data
     self.pendings = Card:getIdList(self.selected_card)
-    self:setSkillPrompt(Fk.skills[data], self.pendings)
+    -- self:setSkillPrompt(Fk.skills[data], self.pendings)
   end
   self:initiateTargets()
 end
@@ -158,7 +157,7 @@ function ReqPlayCard:selectCard(cid, data)
     self.skill_name = nil
     self.selected_card = Fk:getCardById(cid)
     scene:unselectOtherCards(cid)
-    self:setSkillPrompt(self.selected_card.skill, self.selected_card:getEffectiveId())
+    -- self:setSkillPrompt(self.selected_card.skill, self.selected_card:getEffectiveId())
     local sp_skills = {}
     if self.selected_card.special_skills then
       sp_skills = table.simpleClone(self.selected_card.special_skills)

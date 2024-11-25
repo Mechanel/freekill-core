@@ -199,21 +199,20 @@ end
 -- misc
 
 function CardManager:prepareDrawPile(seed)
-  local allCardIds = Fk:getAllCardIds()
+  local gamemode = Fk.game_modes[self.settings.gameMode]
+  assert(gamemode)
 
-  for i = #allCardIds, 1, -1 do
-    if Fk:getCardById(allCardIds[i]).is_derived then
-      local id = allCardIds[i]
-      table.removeOne(allCardIds, id)
-      table.insert(self.void, id)
-      self:setCardArea(id, Card.Void, nil)
-    end
-  end
+  local draw_pile, void_pile = gamemode:buildDrawPile()
 
-  table.shuffle(allCardIds, seed)
-  self.draw_pile = allCardIds
+  table.shuffle(draw_pile, seed)
+  self.draw_pile = draw_pile
   for _, id in ipairs(self.draw_pile) do
     self:setCardArea(id, Card.DrawPile, nil)
+  end
+
+  self.void = void_pile
+  for _, id in ipairs(self.void) do
+    self:setCardArea(id, Card.Void, nil)
   end
 end
 
@@ -249,9 +248,10 @@ function CardManager:getSubcardsByRule(card, fromAreas)
   return cardIds
 end
 
----@param pattern string
----@param num? number
----@param fromPile? string @ 查找的来源区域，值为drawPile|discardPile|allPiles
+---从牌堆（或弃牌堆）内随机抽任意张牌
+---@param pattern string @ 查找规则
+---@param num? number @ 查找数量
+---@param fromPile? "drawPile" | "discardPile" | "allPiles" @ 查找的来源区域，默认从牌堆内寻找
 ---@return integer[] @ id列表 可能空
 function CardManager:getCardsFromPileByRule(pattern, num, fromPile)
   num = num or 1

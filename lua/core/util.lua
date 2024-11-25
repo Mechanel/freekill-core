@@ -98,15 +98,15 @@ end
 ---@param val_func? fun(e: T): integer @ 计算权值的函数，对int[]可不写
 ---@param reverse? boolean @ 是否反排？反排的话优先返回权值小的元素
 function fk.sorted_pairs(t, val_func, reverse)
-  val_func = val_func or function(e) return e end
   local t2 = table.simpleClone(t)  -- 克隆一次表，用作迭代器上值
+  local t_vals = table.map(t2, val_func or function(e) return e end)
   local iter = function()
     local max_idx, max, max_val = -1, nil, nil
     for i, v in ipairs(t2) do
       if not max then
-        max_idx, max, max_val = i, v, val_func(v)
+        max_idx, max, max_val = i, v, t_vals[i]
       else
-        local val = val_func(v)
+        local val = t_vals[i]
         local checked = val > max_val
         if reverse then checked = not checked end
         if checked then
@@ -116,6 +116,7 @@ function fk.sorted_pairs(t, val_func, reverse)
     end
     if max_idx == -1 then return nil, nil end
     table.remove(t2, max_idx)
+    table.remove(t_vals, max_idx)
     return -1, max, max_val
   end
   return iter, nil, 1
@@ -159,8 +160,37 @@ end
 
 -- for card preset
 
+--- 指定目标卡牌的canUse
+Util.CanUse = function(self, player, card, extra_data)
+  return not player:prohibitUse(card)
+end
+
+--- 指定目标卡牌的targetFilter
+Util.TargetFilter = function(self, to_select, selected, selected_cards, card, extra_data)
+  if not self:modTargetFilter(to_select, selected, Self.id, card, not (extra_data and extra_data.bypass_distances)) then return end
+  if #selected >= self:getMaxTargetNum(Self, card) then return end
+  if Self:isProhibited(Fk:currentRoom():getPlayerById(to_select), card) then return end
+  extra_data = extra_data or {}
+  if extra_data.must_targets then
+    -- must_targets: 必须先选择must_targets内的**所有**目标
+    if not (#extra_data.must_targets <= #selected or
+      table.contains(extra_data.must_targets, to_select)) then return false end
+  end
+  if extra_data.include_targets then
+    -- include_targets: 必须先选择include_targets内的**其中一个**目标
+    if not (table.hasIntersection(extra_data.include_targets, selected) or
+      table.contains(extra_data.include_targets, to_select)) then return false end
+  end
+  if extra_data.exclusive_targets then
+    -- exclusive_targets: **只能选择**exclusive_targets内的目标
+    if not table.contains(extra_data.exclusive_targets, to_select) then return false end
+  end
+  return true
+end
+
 --- 全局卡牌(包括自己)的canUse
 Util.GlobalCanUse = function(self, player, card)
+  if player:prohibitUse(card) then return end
   local room = Fk:currentRoom()
   for _, p in ipairs(room.alive_players) do
     if not (card and player:isProhibited(p, card)) then
@@ -171,6 +201,7 @@ end
 
 --- AOE卡牌(不包括自己)的canUse
 Util.AoeCanUse = function(self, player, card)
+  if player:prohibitUse(card) then return end
   local room = Fk:currentRoom()
   for _, p in ipairs(room.alive_players) do
     if p ~= player and not (card and player:isProhibited(p, card)) then
@@ -727,6 +758,17 @@ end
 
 function AimGroup:getCancelledTargets(aimGroup)
   return aimGroup[AimGroup.Cancelled]
+end
+
+---@param target ServerPlayer
+---@param data AimStruct
+---@return boolean
+function AimGroup:isOnlyTarget(target, data)
+  if data.tos == nil then return false end
+  local tos = AimGroup:getAllTargets(data.tos)
+  return table.contains(tos, target.id) and not table.find(target.room.alive_players, function (p)
+    return p ~= target and table.contains(tos, p.id)
+  end)
 end
 
 return { TargetGroup, AimGroup, Util }

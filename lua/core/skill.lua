@@ -124,6 +124,20 @@ function Skill:isEffectable(player)
     end
   end
 
+  for mark, value in pairs(player.mark) do -- 耦合 MarkEnum.InvalidSkills ！
+    if mark == MarkEnum.InvalidSkills then
+      if table.contains(value, self.name) then
+        return false
+      end
+    elseif mark:startsWith(MarkEnum.InvalidSkills .. "-") and table.contains(value, self.name) then
+      for _, suffix in ipairs(MarkEnum.TempMarkSuffix) do
+        if mark:find(suffix, 1, true) then
+          return false
+        end
+      end
+    end
+  end
+
   return true
 end
 
@@ -154,6 +168,18 @@ function Skill:getTimes()
     ret = ret(self)
   end
   return ret
+end
+
+-- 获得此技能时，触发此函数
+---@param player ServerPlayer
+---@param is_start bool
+function Skill:onAcquire(player, is_start)
+end
+
+-- 失去此技能时，触发此函数
+---@param player ServerPlayer
+---@param is_death bool
+function Skill:onLose(player, is_death)
 end
 
 return Skill

@@ -335,7 +335,7 @@ function MoveEventWrappers:recastCard(card_ids, who, skillName)
 end
 
 --- 将一些卡牌同时分配给一些角色。
----@param list table<integer[]> @ 分配牌和角色的数据表，键为角色id，值为分配给其的牌id数组
+---@param list table<integer, integer[]> @ 分配牌和角色的数据表，键为角色id，值为分配给其的牌id数组
 ---@param proposer? integer @ 操作者的id。默认为空
 ---@param skillName? string @ 技能名。默认为“分配”
 ---@return table<integer[]> @ 返回成功分配的卡牌
@@ -397,16 +397,17 @@ end
 ---@param cards integer|integer[] @ 移动的牌
 ---@param skillName? string @ 技能名
 ---@param convert? boolean @ 是否可以替换装备（默认可以）
----@param proposer? ServerPlayer @ 操作者
+---@param proposer? ServerPlayer | integer @ 操作者
 function MoveEventWrappers:moveCardIntoEquip(target, cards, skillName, convert, proposer)
   convert = (convert == nil) and true or convert
   skillName = skillName or ""
   cards = type(cards) == "table" and cards or {cards}
+  proposer = type(proposer) == "number" and self:getPlayerById(proposer) or proposer
+  local proposerId = proposer and proposer.id or nil
   local moves = {}
   for _, cardId in ipairs(cards) do
     local card = Fk:getCardById(cardId)
     local fromId = self.owner_map[cardId]
-    local proposerId = proposer and proposer.id or nil
     if target:canMoveCardIntoEquip(cardId, convert) then
       if target:hasEmptyEquipSlot(card.sub_type) then
         table.insert(moves,{ids = {cardId}, from = fromId, to = target.id, toArea = Card.PlayerEquip, moveReason = fk.ReasonPut,skillName = skillName,proposer = proposerId})

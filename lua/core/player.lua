@@ -671,7 +671,7 @@ end
 
 --- 设定玩家使用特定牌的历史次数。
 ---@param cardName string @ 牌名
----@param num integer @ 次数
+---@param num? integer @ 次数 默认0
 ---@param scope? integer @ 历史范围 全为nil意为清空
 function Player:setCardUseHistory(cardName, num, scope)
   if cardName == "" and num == nil and scope == nil then
@@ -1154,6 +1154,10 @@ function Player:getQuestSkillState(skillName)
   return type(questSkillState) == "string" and questSkillState or nil
 end
 
+
+--- 获取角色未被废除的装备栏
+---@param subtype? string @ 指定的装备栏类型，填空为所有装备栏
+---@return string[]
 function Player:getAvailableEquipSlots(subtype)
   local tempSlots = table.simpleClone(self.equipSlots)
   local tempSealedSlots = table.simpleClone(self.sealedSlots)
@@ -1194,6 +1198,25 @@ function Player:isBuddy(other)
   return self.id == id or table.contains(self.buddy_list, id)
 end
 
+local public_areas = {Card.DiscardPile, Card.Processing, Card.Void, Card.PlayerEquip, Card.PlayerJudge}
+local player_areas = {Card.PlayerHand, Card.PlayerSpecial}
+
+local function defaultCardVisible(self, cardId, area, owner, falsy, special)
+  if area == Card.DrawPile then return false
+  elseif table.contains(public_areas, area) then return not falsy
+  elseif table.contains(player_areas, area) then
+    if area == Card.PlayerSpecial then
+      local specialName = special or owner:getPileNameOfId(cardId)
+      if not specialName:startsWith("$") then
+        return true
+      end
+    end
+    return owner == self or self:isBuddy(owner)
+  else
+    return false
+  end
+end
+
 --- Player是否可看到某card
 --- @param cardId integer
 ---@param move? CardsMoveStruct
@@ -1203,11 +1226,16 @@ function Player:cardVisible(cardId, move)
   if room.replaying and room.replaying_show then return true end
 
   local falsy = false -- 当难以决定时是否要选择暗置？
+  local oldarea, oldspecial, oldowner
   if move then
-    if table.find(move.moveInfo, function(info) return info.cardId == cardId end) then
+    ---@type MoveInfo
+    local info = table.find(move.moveInfo, function(info) return info.cardId == cardId end)
+    if info then
+      oldarea = info.fromArea
+      oldspecial = info.fromSpecialName
+      oldowner = move.from and room:getPlayerById(move.from)
       if move.moveVisible then return true end
       if move.moveVisible == false then falsy = true end
-      -- specialVisible还要控制这个pile对他人是否应该可见，但是不在这里生效
       if move.specialVisible then return true end
 
       if (type(move.visiblePlayers) == "number" and move.visiblePlayers == self.id) or
@@ -1218,10 +1246,8 @@ function Player:cardVisible(cardId, move)
   end
 
   local area = room:getCardArea(cardId)
+  local owner = room:getCardOwner(cardId)
   local card = Fk:getCardById(cardId)
-
-  local public_areas = {Card.DiscardPile, Card.Processing, Card.Void, Card.PlayerEquip, Card.PlayerJudge}
-  local player_areas = {Card.PlayerHand, Card.PlayerSpecial}
 
   if room.observing and not room.replaying then return table.contains(public_areas, area) end
 
@@ -1233,16 +1259,14 @@ function Player:cardVisible(cardId, move)
     end
   end
 
-  if area == Card.DrawPile then return false
-  elseif table.contains(public_areas, area) then return not falsy
-  elseif move and area == Card.PlayerSpecial and not move.specialName:startsWith("$") then
-    return not falsy
-  elseif table.contains(player_areas, area) then
-    local to = room:getCardOwner(cardId)
-    return to == self or self:isBuddy(to)
-  else
-    return false
+  if defaultCardVisible(self, cardId, area, owner, falsy) then
+    return true
+  elseif oldarea then
+    -- 尽可能让牌可见
+    return defaultCardVisible(self, cardId, oldarea, oldowner, false, oldspecial)
   end
+
+  return false
 end
 
 --- Player是否可看到某target的身份

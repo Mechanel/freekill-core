@@ -843,15 +843,14 @@ local liuli = fk.CreateTriggerSkill{
     if #targets == 0 then return false end
     local plist, cid = room:askForChooseCardAndPlayers(player, targets, 1, 1, nil, prompt, self.name, true)
     if #plist > 0 then
-      self.cost_data = {plist[1], cid}
+      self.cost_data = {tos = plist, cards = {cid}}
       return true
     end
   end,
   on_use = function(self, event, target, player, data)
     local room = player.room
-    local to = self.cost_data[1]
-    room:doIndicate(player.id, { to })
-    room:throwCard(self.cost_data[2], self.name, player, player)
+    local to = self.cost_data.tos[1]
+    room:throwCard(self.cost_data.cards, self.name, player, player)
     AimGroup:cancelTarget(data, player.id)
     AimGroup:addTargets(room, data, to)
   end,
@@ -1096,6 +1095,14 @@ local lijian = fk.CreateActiveSkill{
       prohibitedCardNames = { "nullification" },
     }
     room:useCard(new_use)
+  end,
+  target_tip = function(self, to_select, selected, _, __, selectable, ____)
+    if not selectable then return end
+    if #selected == 0 or (#selected > 0 and selected[1] == to_select) then
+      return "lijian_tip_1"
+    else
+      return "lijian_tip_2"
+    end
   end,
 }
 local biyue = fk.CreateTriggerSkill{

@@ -17,6 +17,10 @@ function AI:initialize(player)
   self.player = player
 end
 
+function AI:__tostring()
+  return string.format("%s: %s", self.class.name, tostring(self.player))
+end
+
 -- activeSkill, responseCard, useCard, playCard 四巨头专属
 function AI:isInDashboard()
   if not (self.handler and self.handler:isInstanceOf(Fk.request_handlers["AskForUseActiveSkill"])) then
@@ -25,6 +29,12 @@ function AI:isInDashboard()
     return false
   end
   return true
+end
+
+function AI:getPrompt()
+  local handler = self.handler
+  if not handler then return "" end
+  return handler.prompt
 end
 
 --- 返回当前手牌区域内（包含展开的pile）中所有可选且未选中的卡牌 返回ids
@@ -59,6 +69,21 @@ function AI:getEnabledTargets()
   return ret
 end
 
+function AI:hasEnabledTarget()
+  if not self:isInDashboard() then return false end
+  local room = self.room
+
+  for _, item in pairs(self.handler.scene:getAllItems("Photo")) do
+    if item.enabled and not item.selected then
+      return true
+    end
+  end
+  return false
+end
+
+--- 获取技能面板中所有可以按下的技能按钮
+---@return string[]
+
 --- 获取技能面板中所有可以按下的技能按钮
 ---@return string[]
 function AI:getEnabledSkills()
@@ -76,7 +101,18 @@ end
 ---@return integer[]
 function AI:getSelectedCards()
   if not self:isInDashboard() then return Util.DummyTable end
-  return self.handler.pendings
+  return table.simpleClone(self.handler.pendings)
+end
+
+---@return Card?
+function AI:getSelectedCard()
+  if not self:isInDashboard() then return Util.DummyTable end
+  local handler = self.handler
+  if handler.selected_card then return handler.selected_card end
+  if not handler.skill_name then return end
+  local skill = Fk.skills[handler.skill_name]
+  if not skill:isInstanceOf(ViewAsSkill) then return end
+  return skill:viewAs(handler.pendings)
 end
 
 ---@return ServerPlayer[]
@@ -94,23 +130,59 @@ end
 
 function AI:selectCard(cid, selected)
   if not self:isInDashboard() then return end
+  verbose(0,"%s选择卡牌%d(%s)", selected and "" or "取消", cid, tostring(Fk:getCardById(cid)))
   self.handler:update("CardItem", cid, "click", { selected = selected })
 end
 
 ---@param player ServerPlayer
 function AI:selectTarget(player, selected)
   if not self:isInDashboard() then return end
+  verbose(0,"%s选择角色%s", selected and "" or "取消", tostring(player))
   self.handler:update("Photo", player.id, "click", { selected = selected })
 end
 
 function AI:selectSkill(skill_name, selected)
   if not self:isInDashboard() then return end
+  local items = self.handler.scene.items
+  if not items["SkillButton"] then return end
+  if not items["SkillButton"][skill_name] then return end
+  verbose(0,"%s选择技能%s", selected and "" or "取消", skill_name)
   self.handler:update("SkillButton", skill_name, "click", { selected = selected })
+end
+
+function AI:unSelectAllCards()
+  for _, id in ipairs(self:getSelectedCards()) do
+    self:selectCard(id, false)
+  end
+end
+
+function AI:unSelectAllTargets()
+  for _, p in ipairs(self:getSelectedTargets()) do
+    self:selectTarget(p, false)
+  end
+end
+
+function AI:unSelectSkill()
+  local skill = self:getSelectedSkill()
+  if not skill then return end
+  self:selectSkill(skill, false)
+end
+
+function AI:unSelectAll()
+  self:unSelectSkill()
+  self:unSelectAllCards()
+  self:unSelectAllTargets()
 end
 
 function AI:okButtonEnabled()
   if not self:isInDashboard() then return false end
   return self.handler:feasible()
+end
+
+function AI:isDeadend()
+  if not self:isInDashboard() then return true end
+  return (not self:okButtonEnabled()) and #self:getEnabledCards() == 0
+    and #self:getEnabledTargets() == 0
 end
 
 function AI:doOKButton()
@@ -119,9 +191,25 @@ function AI:doOKButton()
   return self.handler:doOKButton()
 end
 
+---@return Skill?
+function AI:currentSkill()
+  local room = self.room
+  if room.current_cost_skill then return room.current_cost_skill end
+  local sname = room.logic:getCurrentSkillName()
+  if sname then
+    return Fk.skills[sname]
+  end
+end
+
 function AI:makeReply()
   Self = self.player
+  local now = os.getms()
   local fn = self["handle" .. self.command]
+  local is_active = self.command == "AskForUseActiveSkill"
+  if is_active then
+    local skill = Fk.skills[self.data[1]]
+    skill._extra_data = self.data[4]
+  end
   local ret = "__cancel"
   if fn then
     local handler_class = Fk.request_handlers[self.command]
@@ -131,8 +219,13 @@ function AI:makeReply()
     end
     ret = fn(self, self.data)
   end
-  if ret == "" then ret = "__cancel" end
+  if ret == nil or ret == "" then ret = "__cancel" end
   self.handler = nil
+  if is_active then
+    local skill = Fk.skills[self.data[1]]
+    skill._extra_data = Util.DummyTable
+  end
+  verbose(1,"%s 在%.2fms后得出结果：%s", self.command, (os.getms() - now) / 1000, json.encode(ret))
   return ret
 end
 

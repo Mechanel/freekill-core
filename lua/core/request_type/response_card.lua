@@ -38,6 +38,7 @@ function ReqResponseCard:setup()
   ReqActiveSkill.setup(self)
   self.selected_card = nil
   self:updateSkillButtons()
+  self:updatePrompt()
 end
 
 -- FIXME: 关于&牌堆的可使用打出瞎jb写了点 来个懂哥优化一下
@@ -133,7 +134,7 @@ function ReqResponseCard:selectSkill(skill, data)
 
     ReqActiveSkill.setup(self)
 
-    self:setSkillPrompt(Fk.skills[skill])
+    -- self:setSkillPrompt(Fk.skills[skill])
   else
     self.skill_name = nil
     self.prompt = self.original_prompt

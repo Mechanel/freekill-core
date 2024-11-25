@@ -36,3 +36,12 @@ end
 
 function p(v) print(inspect(v)) end
 function pt(t) for k, v in pairs(t) do print(k, v) end end
+
+-- 0: 模拟UI的提示
+-- 1:
+local _verbose_level = 999
+function verbose(level, fmt, ...)
+  if _verbose_level > level then return end
+  local str = fmt:format(...)
+  print("[verbose] " .. str)
+end

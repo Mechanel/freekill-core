@@ -81,13 +81,11 @@ GameRule = fk.CreateTriggerSkill{
     end,
     [fk.BuryVictim] = function()
       player:bury()
-      if room.tag["SkipNormalDeathProcess"] or player.rest > 0 then
+      if room.tag["SkipNormalDeathProcess"] or player.rest > 0 or (data.extra_data and data.extra_data.skip_reward_punish) then
         return false
       end
       local damage = data.damage
-      if damage and damage.from then
-        Fk.game_modes[room.settings.gameMode]:deathRewardAndPunish(player, damage.from)
-      end
+      Fk.game_modes[room.settings.gameMode]:deathRewardAndPunish(player, damage and damage.from)
     end,
     default = function()
       print("game_rule: Event=" .. event)

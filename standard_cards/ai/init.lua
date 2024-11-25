@@ -1,87 +1,190 @@
--- TODO: 合法性的方便函数
--- TODO: 关于如何选择多个目标
--- TODO: 关于装备牌
+SmartAI:setCardSkillAI("default_card_skill", {
+  on_use = function(self, logic, effect)
+    self.skill:onUse(logic, effect)
+  end,
+  on_effect = function(self, logic, effect)
+    self.skill:onEffect(logic, effect)
+  end,
+})
 
--- 基本牌：杀，闪，桃
+SmartAI:setCardSkillAI("slash_skill", {
+  estimated_benefit = 100,
+}, "default_card_skill")
 
----@param from ServerPlayer
----@param to ServerPlayer
----@param card Card
-local function tgtValidator(from, to, card)
-  return not from:prohibitUse(card) and
-    not from:isProhibited(to, card) and
-    true -- feasible
-end
+-- jink
 
-local function justUse(self, card_name, extra_data)
-  local slashes = self:getCards(card_name, "use", extra_data)
-  if #slashes == 0 then return nil end
+SmartAI:setCardSkillAI("peach_skill", nil, "default_card_skill")
 
-  return self:buildUseReply(slashes[1].id)
-end
+SmartAI:setCardSkillAI("dismantlement_skill", {
+  on_effect = function(self, logic, effect)
+    local from = logic:getPlayerById(effect.from)
+    local to = logic:getPlayerById(effect.to)
+    if from.dead or to.dead or to:isAllNude() then return end
+    local _, val = self:thinkForCardChosen(from.ai, to, "hej")
+    logic.benefit = logic.benefit + val
+  end,
 
----@param self SmartAI
----@param card_name string
-local function useToEnemy(self, card_name, extra_data)
-  local slashes = self:getCards(card_name, "use", extra_data)
-  if #slashes == 0 then return nil end
+  think_card_chosen = function(self, ai, target, _, __)
+    local cards = target:getCardIds("hej")
+    local cid, val = -1, -100000
+    for _, id in ipairs(cards) do
+      local v = ai:getBenefitOfEvents(function(logic)
+        logic:throwCard({id}, self.skill.name, target, ai.player)
+      end)
+      if v > val then
+        cid, val = id, v
+      end
+    end
+    return cid, val
+  end,
+})
 
-  -- TODO: 目标合法性
-  local targets = {}
-  if self.enemies[1] then
-    table.insert(targets, self.enemies[1].id)
-  else
-    return nil
-  end
+SmartAI:setCardSkillAI("snatch_skill", {
+  think_card_chosen = function(self, ai, target, _, __)
+    local cards = target:getCardIds("hej")
+    local cid, val = -1, -100000
+    for _, id in ipairs(cards) do
+      local v = ai:getBenefitOfEvents(function(logic)
+        logic:obtainCard(ai.player, id, false, fk.ReasonPrey)
+      end)
+      if v > val then
+        cid, val = id, v
+      end
+    end
+    return cid, val
+  end,
+}, "dismantlement_skill")
 
-  return self:buildUseReply(slashes[1].id, targets)
-end
+-- duel
+-- collateral_skill
 
-fk.ai_use_card["slash"] = function(self, pattern, prompt, cancelable, extra_data)
-  return useToEnemy(self, "slash", extra_data)
-end
+SmartAI:setCardSkillAI("ex_nihilo_skill", {
+  on_use = function(self, logic, effect)
+    self.skill:onUse(logic, effect)
+  end,
+  on_effect = function(self, logic, effect)
+    local target = logic:getPlayerById(effect.to)
+    logic:drawCards(target, 2, "ex_nihilo")
+  end,
+})
 
-fk.ai_use_card["jink"] = function(self, pattern, prompt, cancelable, extra_data)
-  return justUse(self, "jink", extra_data)
-end
+-- nullification
 
-fk.ai_use_card["peach"] = function(self, _, _, _, extra_data)
-  local cards = self:getCards("peach", "use", extra_data)
-  if #cards == 0 then return nil end
+SmartAI:setCardSkillAI("savage_assault_skill", {
+  on_use = function(self, logic, effect)
+    self.skill:onUse(logic, effect)
+  end,
+  on_effect = function(self, logic, effect)
+    Fk.skills["slash_skill"]:onEffect(logic, effect)
+  end,
+})
 
-  return self:buildUseReply(cards[1].id)
-end
+SmartAI:setCardSkillAI("archery_attack_skill", {
+  on_use = function(self, logic, effect)
+    self.skill:onUse(logic, effect)
+  end,
+  on_effect = function(self, logic, effect)
+    Fk.skills["slash_skill"]:onEffect(logic, effect)
+  end,
+})
 
--- 自救见军争卡牌AI
-fk.ai_use_card["#AskForPeaches"] = function(self)
-  local room = self.room
-  local deathEvent = room.logic:getCurrentEvent()
-  local data = deathEvent.data[1] ---@type DyingStruct
+SmartAI:setCardSkillAI("god_salvation_skill", nil, "default_card_skill")
 
-  -- TODO: 关于救不回来、神关羽之类的更复杂逻辑
-  -- TODO: 这些逻辑感觉不能写死在此函数里面，得想出更加多样的办法
-  if self:isFriend(room:getPlayerById(data.who)) then
-    return fk.ai_use_card["peach"](self)
-  end
-  return nil
-end
+-- amazing_grace_skill
+-- lightning_skill
 
-fk.ai_use_card["dismantlement"] = function(self, pattern, prompt, cancelable, extra_data)
-  return useToEnemy(self, "dismantlement", extra_data)
-end
+SmartAI:setCardSkillAI("indulgence_skill")
 
-fk.ai_use_card["snatch"] = function(self, pattern, prompt, cancelable, extra_data)
-  return useToEnemy(self, "snatch", extra_data)
-end
+SmartAI:setCardSkillAI("default_equip_skill", {
+  on_use = function(self, logic, effect)
+    self.skill:onUse(logic, effect)
+  end,
 
-fk.ai_use_card["duel"] = function(self, pattern, prompt, cancelable, extra_data)
-  return useToEnemy(self, "duel", extra_data)
-end
+  think = function(self, ai)
+    local estimate_val = self:getEstimatedBenefit(ai)
+    local cards = ai:getEnabledCards()
+    cards = table.filter(cards, function(cid) return Fk:getCardById(cid).skill.name == "default_equip_skill" end)
+    cards = table.random(cards, math.min(#cards, 5)) --[[@as integer[] ]]
+    -- local cid = table.random(cards)
 
-fk.ai_use_card["ex_nihilo"] = function(self, pattern, prompt, cancelable, extra_data)
-  return justUse(self, "ex_nihilo", extra_data)
-end
+    local best_ret, best_val = "", -100000
+    for _, cid in ipairs(cards) do
+      ai:selectCard(cid, true)
+      local ret, val = self:chooseTargets(ai)
+      val = val or -100000
+      if best_val < val then
+        best_ret, best_val = ret, val
+      end
+      if best_val >= estimate_val then break end
+      ai:unSelectAll()
+    end
 
-fk.ai_use_card["indulgence"] = function(self, pattern, prompt, cancelable, extra_data)
-  return useToEnemy(self, "indulgence", extra_data)
-end
+    if best_ret and best_ret ~= "" then
+      if best_val < 0 then
+        return ""
+      end
+
+      best_ret = { card = ai:getSelectedCard().id, targets = best_ret }
+    end
+
+    return best_ret, best_val
+  end,
+})
+
+SmartAI:setTriggerSkillAI("#nioh_shield_skill", {
+  correct_func = function(self, logic, event, target, player, data)
+    return self.skill:triggerable(event, target, player, data)
+  end,
+})
+
+SmartAI:setSkillAI("spear_skill", {
+  choose_targets = function(self, ai)
+    local logic = AIGameLogic:new(ai)
+    local val_func = function(targets)
+      logic.benefit = 0
+      logic:useCard({
+        from = ai.player.id,
+        tos = table.map(targets, function(p) return { p.id } end),
+        card = self.skill:viewAs(ai:getSelectedCards()),
+      })
+      verbose(1, "目前状况下，对[%s]的预测收益为%d", table.concat(table.map(targets, function(p)return tostring(p)end), "+"), logic.benefit)
+      return logic.benefit
+    end
+    local best_targets, best_val = nil, -100000
+    for targets in self:searchTargetSelections(ai) do
+      local val = val_func(targets)
+      if (not best_targets) or (best_val < val) then
+        best_targets, best_val = targets, val
+      end
+    end
+    return best_targets or {}, best_val
+  end,
+  think = function(self, ai)
+    local skill_name = self.skill.name
+    local estimate_val = self:getEstimatedBenefit(ai)
+    -- local cards = ai:getEnabledCards()
+    -- cards = table.random(cards, math.min(#cards, 5)) --[[@as integer[] ]]
+    -- local cid = table.random(cards)
+
+    local best_cards, best_ret, best_val = nil, "", -100000
+    for cards in self:searchCardSelections(ai) do
+      local ret, val = self:chooseTargets(ai)
+      verbose(1, "就目前选择的这张牌，考虑[%s]，收益为%d", table.concat(table.map(ret, function(p)return tostring(p)end), "+"), val)
+      val = val or -100000
+      if best_val < val then
+        best_cards, best_ret, best_val = cards, ret, val
+      end
+      -- if best_val >= estimate_val then break end
+    end
+
+    if best_ret and best_ret ~= "" then
+      if best_val < 0 then
+        return "", best_val
+      end
+
+      best_ret = { cards = best_cards, targets = best_ret }
+    end
+
+    return best_ret, best_val
+  end,
+}, "__card_skill")

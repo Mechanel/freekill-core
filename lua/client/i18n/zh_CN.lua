@@ -205,6 +205,7 @@ FreeKill使用的是libgit2的C API，与此同时使用Git完成拓展包的下
   ["Cancel"] = "取消",
   ["End"] = "结束",
   -- ["Quit"] = "退出",
+  ["All"] = "全部",
   ["BanGeneral"] = "禁将",
   ["ResumeGeneral"] = "解禁",
   ["Enable"] = "启用",
@@ -293,7 +294,7 @@ FreeKill使用的是libgit2的C API，与此同时使用Git完成拓展包的下
   ["#replaceEquip"] = "选择一张装备牌替换之",
   ["#askForPindian"] = "%arg：请选择一张手牌作为拼点牌",
   ["#StartPindianReason"] = "%from 由于 %arg 而发起拼点",
-  ["#ShowPindianCard"] = "%from 的拼点牌是 %card",
+  ["#ShowPindianCard"] = "%from 的拼点牌是 %arg",
   ["#ShowPindianResult"] = "%from 在 %from 和 %to 之间的拼点中 %arg",
   ["pindianwin"] = "赢",
   ["pindiannotwin"] = "没赢",
@@ -361,9 +362,9 @@ FreeKill使用的是libgit2的C API，与此同时使用Git完成拓展包的下
   ["Resume"] = "继续",
 
   ["Bulletin Info"] = [==[
-  ## v0.4.21
+  ## v0.5.0
 
-  UI重构！还有很长一段路要走……
+  更新了不少内容！但是想不起来更新了什么了
 
   ]==],
 }

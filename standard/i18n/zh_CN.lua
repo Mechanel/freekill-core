@@ -298,6 +298,8 @@ Fk:loadTranslationTable{
   ["lijian"] = "离间",
   [":lijian"] = "出牌阶段限一次，你可以弃置一张牌并选择两名其他男性角色，后选择的角色视为对先选择的角色使用了一张不能被【无懈可击】的【决斗】。",
   ["#lijian-active"] = "发动 离间，弃置一张手牌并选择两名其他男性角色，后选择的角色视为对先选择的角色使用了一张不能被【无懈可击】的【决斗】",
+  ["lijian_tip_1"] = "先出杀",
+  ["lijian_tip_2"] = "后出杀",
   ["$biyue1"] = "失礼了～",
   ["$biyue2"] = "羡慕吧～",
   ["biyue"] = "闭月",
@@ -537,6 +539,7 @@ Fk:loadTranslationTable{
   ["AskForDiscard"] = "弃牌",
   ["AskForCardChosen"] = "选牌",
   ["AskForCardsChosen"] = "选牌",
+  ["AskForPindian"] = "拼点",
 
   ["reveal_skill&"] = "亮将",
   ["#reveal_skill&"] = "选择一个武将亮将（点击左侧选择框展开）",

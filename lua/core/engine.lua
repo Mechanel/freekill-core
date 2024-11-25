@@ -19,6 +19,7 @@
 ---@field public same_generals table<string, string[]> @ 所有同名武将组合
 ---@field public lords string[] @ 所有主公武将，用于常备主公
 ---@field public all_card_types table<string, Card> @ 所有的卡牌类型以及一张样板牌
+---@field public all_card_names string[] @ 有序的所有的卡牌牌名，顺序：基本牌（杀置顶），普通锦囊，延时锦囊，按副类别排序的装备
 ---@field public cards Card[] @ 所有卡牌
 ---@field public translations table<string, table<string, string>> @ 翻译表
 ---@field public game_modes table<string, GameMode> @ 所有游戏模式
@@ -67,6 +68,7 @@ function Engine:initialize()
   self.same_generals = {}
   self.lords = {}     -- lordName[]
   self.all_card_types = {}
+  self.all_card_names = {}
   self.cards = {}     -- Card[]
   self.translations = {}  -- srcText --> translated
   self.game_modes = {}
@@ -84,6 +86,7 @@ function Engine:initialize()
 
   self:loadPackages()
   self:setLords()
+  self:loadCardNames()
   self:loadDisabled()
   self:loadRequestHandlers()
   self:addSkills(AuxSkills)
@@ -408,6 +411,7 @@ function Engine:setLords()
     for _, skill in ipairs(skills) do
       if skill.lordSkill then
         table.insert(self.lords, general.name)
+        break
       end
     end
   end
@@ -519,6 +523,7 @@ function Engine:addCard(card)
   if self.all_card_types[card.name] == nil then
     self.skills[card.skill.name] = card.skill
     self.all_card_types[card.name] = card
+    table.insert(self.all_card_names, card.name)
   end
 end
 
@@ -543,6 +548,23 @@ function Engine:cloneCard(name, suit, number)
   local ret = cd:clone(suit, number)
   ret.package = cd.package
   return ret
+end
+
+--- 为所有加载的卡牌牌名排序
+function Engine:loadCardNames()
+  local slash, basic, commonTrick, other = {}, {}, {}, {}
+  for _, name in ipairs(self.all_card_names) do
+    local card = self.all_card_types[name]
+    if card.type == Card.TypeBasic then
+      table.insert(card.trueName == "slash" and slash or basic, name)
+    elseif card:isCommonTrick() then
+      table.insert(commonTrick, name)
+    else
+      table.insert(other, name)
+    end
+  end
+  table.sort(other, function(a, b) return self.all_card_types[a].sub_type < self.all_card_types[b].sub_type end)
+  self.all_card_names = table.connect(slash, basic, commonTrick, other)
 end
 
 --- 向Engine中添加一系列游戏模式。

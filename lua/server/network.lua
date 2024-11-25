@@ -18,6 +18,7 @@
 ---@field private _asked boolean? @ 是否询问过了
 ---@field public focus_players? ServerPlayer[] @ 要moveFocus的玩家们 默认参与者
 ---@field public focus_text? string @ 要moveFocus的文字 默认self.command
+---@field public no_time_waste_check? boolean
 local Request = class("Request")
 
 -- TODO: 懒得思考了
@@ -162,7 +163,7 @@ function Request:_checkReply(player, use_ai)
       player.ai.command = self.command
       -- FIXME: 后面进行SmartAI的时候准备爆破此处
       player.ai.data = self.data[player.id]
-      reply = player.ai:makeReply()
+      reply = Pcall(player.ai.makeReply, player.ai)
     else
       -- 还没轮到AI呢，所以需要标记为未答复
       reply = "__notready"
@@ -190,7 +191,8 @@ function Request:ask()
   end
 
   -- 发送focus
-  room:notifyMoveFocus(self.focus_players or self.players, self.focus_text or self.command)
+  room:notifyMoveFocus(self.focus_players or self.players, self.focus_text or self.command,
+    math.floor(self.timeout * 1000))
 
   -- 1. 向所有人发送询问请求
   for _, p in ipairs(players) do
@@ -299,8 +301,7 @@ end
 function Request:_finish()
   local room = self.room
   surrenderCheck(room)
-  -- FIXME: 这里QML中有个bug，这个命令应该是用来暗掉玩家面板的
-  -- room:doBroadcastNotify("CancelRequest", "")
+
   for _, p in ipairs(self.players) do
     p.serverplayer:setThinking(false)
     -- 这个什么timewaste_count也该扔了
@@ -310,10 +311,12 @@ function Request:_finish()
     end
     if self.result[p.id] == nil then
       self.result[p.id] = self.default_reply[p.id] or ""
-      p._timewaste_count = p._timewaste_count + 1
-      if p._timewaste_count >= 3 and p.serverplayer:getState() == fk.Player_Online then
-        p._timewaste_count = 0
-        p.serverplayer:emitKick()
+      if not self.no_time_waste_check then
+        p._timewaste_count = p._timewaste_count + 1
+        if p._timewaste_count >= 3 and p.serverplayer:getState() == fk.Player_Online then
+          p._timewaste_count = 0
+          p.serverplayer:emitKick()
+        end
       end
     else
       p._timewaste_count = 0
@@ -327,8 +330,8 @@ function Request:_finish()
   for _, isHuman in pairs(self.send_success) do
     if not self.ai_start_time then break end
     if not isHuman then
-      local to_delay = 500 - (os.getms() - self.ai_start_time) / 1000
-      room:delay(to_delay)
+      local to_delay = 800 - (os.getms() - self.ai_start_time) / 1000
+      if to_delay > 0 then room:delay(to_delay) end
       break
     end
   end
