@@ -730,9 +730,7 @@ local keji = fk.CreateTriggerSkill{
       and #player.room.logic:getEventsOfScope(GameEvent.RespondCard, 1, PlayCheck, Player.HistoryTurn) == 0
     end
   end,
-  on_use = function(self, event, target, player, data)
-    return true
-  end
+  on_use = Util.TrueFunc,
 }
 local lvmeng = General:new(extension, "lvmeng", "wu", 4)
 lvmeng:addSkill(keji)
@@ -1133,7 +1131,7 @@ local role_getlogic = function()
     local lord_num = 3
 
     if lord ~= nil then
-      room.current = lord
+      room:setCurrent(lord)
       local a1 = #room.general_pile
       local a2 = #room.players * generalNum
       if a1 < a2 then

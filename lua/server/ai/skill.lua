@@ -59,6 +59,16 @@ end
 function SkillAI:thinkForSkillInvoke(ai, skill_name, prompt)
 end
 
+---@param ai SmartAI
+---@param choices string[] @ 可选选项列表
+---@param skill_name? string @ 技能名
+---@param prompt? string @ 提示信息
+---@param detailed? boolean @ 选项详细描述
+---@param all_choices? string[] @ 所有选项（不可选变灰）
+---@return string, integer?
+function SkillAI:thinkForChoice(ai, choices, skill_name, prompt, detailed, all_choices)
+end
+
 -- 搜索类方法：怎么走下一步？
 -- choose系列的函数都是用作迭代算子的，因此它们需要能计算出所有的可选情况
 -- （至少是需要所有的以及觉得可行的可选情况，如果另外写AI的话）
@@ -194,6 +204,7 @@ function SkillAI:onEffect(logic, cardEffectEvent) end
 ---@field think? fun(self: SkillAI, ai: SmartAI): any?, integer?
 ---@field think_card_chosen? fun(self: SkillAI, ai: SmartAI, target: ServerPlayer, flag: string, prompt: string?): integer, integer?
 ---@field think_skill_invoke? fun(self: SkillAI, ai: SmartAI, skill_name: string, prompt: string?): boolean, integer?
+---@field think_choice? fun(self: SkillAI, ai: SmartAI, choices:string[], skill_name: string, prompt: string, detailed:string, all_choices: string[]): string, integer
 ---@field choose_interaction? fun(self: SkillAI, ai: SmartAI): boolean?
 ---@field choose_cards? fun(self: SkillAI, ai: SmartAI): boolean?
 ---@field choose_targets? fun(self: SkillAI, ai: SmartAI): any, integer?

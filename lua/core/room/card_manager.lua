@@ -183,6 +183,7 @@ function CardManager:filterCard(id, player, data)
   end
 end
 
+--- 打印一张牌并存放于Void区
 function CardManager:printCard(name, suit, number)
   local card = Fk:cloneCard(name, suit, number)
 
@@ -229,8 +230,9 @@ function CardManager:shuffleDrawPile(seed)
   table.shuffle(self.draw_pile, seed)
 end
 
----@param card Card
----@param fromAreas? CardArea[]
+--- 筛选出某卡牌在指定区域内的子牌id数组
+---@param card Card @ 要筛选的卡牌
+---@param fromAreas? CardArea[] @ 指定的区域，填空则输出此卡牌所有子牌id
 ---@return integer[]
 function CardManager:getSubcardsByRule(card, fromAreas)
   if card:isVirtual() and #card.subcards == 0 then

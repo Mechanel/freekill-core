@@ -1,4 +1,7 @@
+fk.ai_card_keep_value["thunder__slash"] = 20
 SmartAI:setCardSkillAI("thunder__slash_skill", nil, "slash_skill")
+
+fk.ai_card_keep_value["fire__slash"] = 35
 SmartAI:setCardSkillAI("fire__slash_skill", nil, "slash_skill")
 
 SmartAI:setCardSkillAI("iron_chain_skill", {
@@ -31,7 +34,15 @@ SmartAI:setCardSkillAI("supply_shortage_skill")
 --[[
 SmartAI:setSkillAI("analeptic_skill", just_use)
 --]]
+fk.ai_card_keep_value["analeptic"] = 30
 
+fk.ai_card_keep_value["iron_chain"] = 25
+
+fk.ai_card_keep_value["fire_attack"] = 30
+
+fk.ai_card_keep_value["supply_shortage"] = 45
+
+fk.ai_card_keep_value["guding_blade"] = 20
 SmartAI:setTriggerSkillAI("#guding_blade_skill", {
   correct_func = function(self, logic, event, target, player, data)
     if self.skill:triggerable(event, target, player, data) then
@@ -40,6 +51,7 @@ SmartAI:setTriggerSkillAI("#guding_blade_skill", {
   end,
 })
 
+fk.ai_card_keep_value["vine"] = 30
 SmartAI:setTriggerSkillAI("#vine_skill", {
   correct_func = function(self, logic, event, target, player, data)
     local skill = self.skill
@@ -52,3 +64,9 @@ SmartAI:setTriggerSkillAI("#vine_skill", {
     end
   end,
 })
+
+fk.ai_card_keep_value["hualiu"] = 20
+
+fk.ai_card_keep_value["silver_lion"] = 20
+
+fk.ai_card_keep_value["fan"] = 20

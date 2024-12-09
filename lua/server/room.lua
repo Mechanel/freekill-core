@@ -172,12 +172,6 @@ function Room:__tostring()
   return string.format("<Room #%d>", self.id)
 end
 
---[[ 敢删就寄，算了
-function Room:__gc()
-  self.room:checkAbandoned()
-end
---]]
-
 --- 正式在这个房间中开始游戏。
 ---
 --- 当这个函数返回之后，整个Room线程也宣告结束。
@@ -479,6 +473,14 @@ end
 function Room:setBanner(name, value)
   AbstractRoom.setBanner(self, name, value)
   self:doBroadcastNotify("SetBanner", json.encode{ name, value })
+end
+
+--- 设置房间的当前行动者
+---@param player ServerPlayer
+function Room:setCurrent(player)
+  AbstractRoom.setCurrent(self, player)
+  -- rawset(self, "current", player)
+  self:doBroadcastNotify("SetCurrent", json.encode{ player and player.id or nil })
 end
 
 ---@param player ServerPlayer
@@ -1275,7 +1277,6 @@ function Room:askForYiji(player, cards, targets, skillName, minNum, maxNum, prom
     residued_list = residueMap,
     expand_pile = expand_pile
   }
-  -- p(json.encode(residueMap))
 
   while maxNum > 0 and #_cards > 0 do
     data.max_num = maxNum
@@ -1287,7 +1288,9 @@ function Room:askForYiji(player, cards, targets, skillName, minNum, maxNum, prom
       for _, id in ipairs(give_cards) do
         table.insert(list[to], id)
         table.removeOne(_cards, id)
-        self:setCardMark(Fk:getCardById(id), "@DistributionTo", Fk:translate(self:getPlayerById(to).general))
+        local p = self:getPlayerById(to)
+        self:setCardMark(Fk:getCardById(id), "@DistributionTo",
+          Fk:translate(p.general == "anjiang" and "seat#" .. tostring(p.seat) or p.general))
       end
       minNum = math.max(0, minNum - #give_cards)
       maxNum = maxNum - #give_cards
@@ -2667,14 +2670,21 @@ function Room:gameOver(winner)
       local id = p.id
       local general = p.general
       local mode = self.settings.gameMode
+      local result
 
       if p.id > 0 then
         if table.contains(winner:split("+"), p.role) then
-          self.room:updateWinRate(id, general, mode, 1, p.dead)
+          result = 1
         elseif winner == "" then
-          self.room:updateWinRate(id, general, mode, 3, p.dead)
+          result = 3
         else
-          self.room:updateWinRate(id, general, mode, 2, p.dead)
+          result = 2
+        end
+
+        self.room:updatePlayerWinRate(id, mode, p.role, result)
+        self.room:updateGeneralWinRate(general, mode, p.role, result)
+        if p.deputyGeneral and p.deputyGeneral ~= "" then
+          self.room:updateGeneralWinRate(p.deputyGeneral, mode, p.role, result)
         end
       end
     end

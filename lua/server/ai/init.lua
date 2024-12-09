@@ -7,17 +7,18 @@ TrustAI = require "server.ai.trust_ai"
 SmartAI = require "server.ai.smart_ai"
 
 -- load ai module from packages
-local directories
+local directories = {}
 if UsingNewCore then
-  directories = FileIO.ls("..")
   require "standard_cards.ai"
   require "standard.ai"
   require "maneuvering.ai"
+  FileIO.cd("../..")
+  directories = FileIO.ls("packages")
 else
-  --directories = FileIO.ls("packages")
-  --require "packages.standard.ai"
-  --require "packages.standard_cards.ai"
-  --require "packages.maneuvering.ai"
+  directories = FileIO.ls("packages")
+  require "packages.standard_cards.ai"
+  require "packages.standard.ai"
+  require "packages.maneuvering.ai"
 end
 table.removeOne(directories, "standard")
 table.removeOne(directories, "standard_cards")
@@ -33,4 +34,8 @@ for _, dir in ipairs(directories) do
     require(string.format("packages.%s.ai", dir))
 
   end
+end
+
+if UsingNewCore then
+  FileIO.cd("packages/freekill-core")
 end

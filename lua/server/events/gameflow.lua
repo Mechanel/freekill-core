@@ -114,7 +114,7 @@ function Round:action()
     if room.current.seat > nextTurnOwner.seat and not changingData.skipRoundPlus then
       break
     else
-      room.current = nextTurnOwner
+      room:setCurrent(nextTurnOwner)
     end
   end
 end
@@ -133,7 +133,7 @@ function Round:main()
   room:setTag("RoundCount",  roundCount)
   room:doBroadcastNotify("UpdateRoundNum", roundCount)
   -- 强行平局 防止can_trigger报错导致瞬间几十万轮卡炸服务器
-  if roundCount >= 9999 then
+  if roundCount >= 280 then
     room:sendLog{
       type = "#TimeOutDraw",
       toast = true,
@@ -200,6 +200,10 @@ function Turn:prepare()
   if player.dead then return true end
 
   room:sendLog{ type = "$AppendSeparator" }
+
+  if logic:trigger(fk.PreTurnStart, player, data) then
+    return true
+  end
 
   if not player.faceup then
     player:turnOver()

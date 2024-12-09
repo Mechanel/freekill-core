@@ -48,13 +48,21 @@ function AbstractRoom:getCardOwner(cardId)
   return ret and self:getPlayerById(ret)
 end
 
+--- 设置房间banner于左上角，用于模式介绍，仁区等
 function AbstractRoom:setBanner(name, value)
   if value == 0 then value = nil end
   self.banners[name] = value
 end
 
+--- 获得房间的banner，如果不存在则返回nil
 function AbstractRoom:getBanner(name)
   return self.banners[name]
+end
+
+--- 设置房间的当前行动者
+---@param player Player
+function AbstractRoom:setCurrent(player)
+  self.current = player
 end
 
 function AbstractRoom:toJsonObject()
@@ -68,6 +76,7 @@ function AbstractRoom:toJsonObject()
   return {
     card_manager = card_manager,
     circle = table.map(self.players, Util.IdMapper),
+    current = self.current and self.current.id or nil,
     banners = self.banners,
     timeout = self.timeout,
     settings = self.settings,
@@ -80,6 +89,7 @@ function AbstractRoom:loadJsonObject(o)
   CardManager.loadJsonObject(self, o.card_manager)
 
   -- 需要上层（目前是Client）自己根据circle添加玩家
+  self.current = self:getPlayerById(o.current)
   self.banners = o.banners
   self.timeout = o.timeout
   self.settings = o.settings
@@ -87,6 +97,9 @@ function AbstractRoom:loadJsonObject(o)
     local pid = tonumber(k)
     self:getPlayerById(pid):loadJsonObject(v)
   end
+  self.alive_players = table.filter(self.players, function(p)
+    return p:isAlive()
+  end)
 end
 
 -- 判断当前模式是否为某类模式

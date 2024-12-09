@@ -486,38 +486,7 @@ end
 ---@param moves CardsMoveStruct[]
 local function separateMoves(moves)
   local ret = {}  ---@type CardsMoveInfo[]
-
-  local function containArea(area, relevant, defaultVisible) --处理区的处理？
-    local areas = relevant
-      and {Card.PlayerEquip, Card.PlayerJudge, Card.PlayerHand}
-      or {Card.PlayerEquip, Card.PlayerJudge}
-    return table.contains(areas, area) or (defaultVisible and table.contains({Card.Processing, Card.DiscardPile}, area))
-  end
-
   for _, move in ipairs(moves) do
-    local singleVisible = move.moveVisible
-    if not singleVisible then
-      if move.visiblePlayers then
-        local visiblePlayers = move.visiblePlayers
-        if type(visiblePlayers) == "number" then
-          if Self:isBuddy(visiblePlayers) then
-            singleVisible = true
-          end
-        elseif type(visiblePlayers) == "table" then
-          if table.find(visiblePlayers, function(pid) return Self:isBuddy(pid) end) then
-            singleVisible = true
-          end
-        end
-      else
-        if move.to and move.toArea == Card.PlayerSpecial and Self:isBuddy(move.to) then
-          singleVisible = true
-        end
-      end
-    end
-    if not singleVisible then
-      singleVisible = containArea(move.toArea, move.to and Self:isBuddy(move.to), move.moveVisible == nil)
-    end
-
     for _, info in ipairs(move.moveInfo) do
       table.insert(ret, {
         ids = {info.cardId},
@@ -528,8 +497,7 @@ local function separateMoves(moves)
         moveReason = move.moveReason,
         specialName = move.specialName,
         fromSpecialName = info.fromSpecialName,
-        proposer = move.proposer,
-        moveVisible = singleVisible or containArea(info.fromArea, move.from and Self:isBuddy(move.from), move.moveVisible == nil)
+        proposer = move.proposer
       })
     end
   end
@@ -732,25 +700,13 @@ fk.client_callback["MoveCards"] = function(self, raw_moves)
   -- jsonData: CardsMoveStruct[]
   self:moveCards(raw_moves)
   local visible_data = {}
-  local separated = separateMoves(raw_moves)
-
-  local room = Fk:currentRoom()
-  for _, move in ipairs(separated) do
-    local cid = move.ids[1]
-    local singleVisible = (room.replaying and room.replaying_show) or move.moveVisible
-    if not singleVisible then
-      local card = Fk:getCardById(cid)
-      local status_skills = Fk:currentRoom().status_skills[VisibilitySkill] or Util.DummyTable
-      for _, skill in ipairs(status_skills) do
-        local f = skill:cardVisible(Self, card)
-        if f ~= nil then
-          singleVisible = f
-          break
-        end
-      end
+  for _, move in ipairs(raw_moves) do
+    for _, info in ipairs(move.moveInfo) do
+      local cid = info.cardId
+      visible_data[tostring(cid)] = Self:cardVisible(cid, move)
     end
-    visible_data[tostring(cid)] = singleVisible
   end
+  local separated = separateMoves(raw_moves)
   local merged = mergeMoves(separated)
   visible_data.merged = merged
   self:notifyUI("MoveCards", visible_data)
@@ -963,6 +919,7 @@ fk.client_callback["SetBanner"] = function(self, data)
 
   if string.sub(mark, 1, 1) == "@" then
     self:notifyUI("SetBanner", data)
+    self:notifyUI("SetBanner", data)
   end
 end
 
@@ -971,6 +928,7 @@ fk.client_callback["SetCardMark"] = function(self, data)
   local card, mark, value = data[1], data[2], data[3]
   Fk:getCardById(card):setMark(mark, value)
 
+  self:notifyUI("UpdateCard", card)
   self:notifyUI("UpdateCard", card)
 end
 
@@ -1178,6 +1136,7 @@ fk.client_callback["RmBuddy"] = function(self, data)
 end
 
 local function loadRoomSummary(self, data)
+local function loadRoomSummary(self, data)
   local players = data.players
 
   fk.client_callback["StartGame"](self, "")
@@ -1207,6 +1166,13 @@ end
 fk.client_callback["Reconnect"] = function(self, data)
   local players = data.players
 
+  fk.client_callback["EnterLobby"](self, "")
+
+  if not self.replaying then
+    self:startRecording()
+    table.insert(self.record, {math.floor(os.getms() / 1000), false, "Reconnect", json.encode(data)})
+  end
+
   local setup_data = players[tostring(data.you)].setup_data
   self:setup(setup_data[1], setup_data[2], setup_data[3])
   fk.client_callback["AddTotalGameTime"](self, { setup_data[1], setup_data[5] })
@@ -1221,6 +1187,11 @@ end
 
 fk.client_callback["Observe"] = function(self, data)
   local players = data.players
+
+  if not self.replaying then
+    self:startRecording()
+    table.insert(self.record, {math.floor(os.getms() / 1000), false, "Observe", json.encode(data)})
+  end
 
   local setup_data = players[tostring(data.you)].setup_data
   self:setup(setup_data[1], setup_data[2], setup_data[3])

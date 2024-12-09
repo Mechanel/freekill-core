@@ -6,6 +6,8 @@
 
 --]]
 
+fk.ai_card_keep_value = {}
+
 ---@class SmartAI: TrustAI, AIUtil
 ---@field private _memory table<string, any> @ AI底层的空间换时间机制
 ---@field public friends ServerPlayer[] @ 队友
@@ -74,6 +76,7 @@ function SmartAI.static:setSkillAI(key, spec, inherit)
     think = "think",
     think_card_chosen = "thinkForCardChosen",
     think_skill_invoke = "thinkForSkillInvoke",
+    think_choice = "thinkForChoice",
     choose_interaction = "chooseInteraction",
     choose_cards = "chooseCards",
     choose_targets = "chooseTargets",
@@ -327,6 +330,17 @@ function SmartAI:handleAskForSkillInvoke(data)
     if skill and skill.frequency == Skill.Frequent then
       return "1"
     end
+  end
+end
+
+function SmartAI:handleAskForChoice(data)
+  local choices, skillName, prompt, detailed, allChoices = table.unpack(data)
+  local ai = fk.ai_skills[skillName]
+  if ai then
+    local ret = ai:thinkForChoice(self, choices, prompt, detailed, allChoices)
+    return ret
+  else
+    return choices[1]
   end
 end
 

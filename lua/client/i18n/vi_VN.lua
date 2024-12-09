@@ -71,7 +71,7 @@ Fk:loadTranslationTable({
   ["Choose one handcard"] = "Chọn 1 lá",
   ["Revert Selection"] = "Đảo ngược",
   ["Handcard selector"] = "Bộ chọn bài",
-  
+
   ["Give Flower"] = "Tặng Hoa",
   ["Give Egg"] = "Tặng Trứng",
   ["Give Wine"] = "Tặng Rượu",
@@ -366,7 +366,7 @@ Trang chủ: https://libgit2.org
   ## v0.5.0
 
   Nhiều thứ đã được update, nhưng tôi quên mất rồi.
-  
+
   Nhưng không quan trọng đúng không :))
 
   ]==],

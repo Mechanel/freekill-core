@@ -93,6 +93,7 @@ end
 function ReqActiveSkill:setupInteraction()
   local skill = Fk.skills[self.skill_name]
   if skill and skill.interaction then
+    skill.interaction.data = nil
     local interaction = skill:interaction()
     if not interaction then
       return
